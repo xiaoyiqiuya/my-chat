@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="window_bg">#FFFFFFFF</color>
+    <color name="status_bg">#FFFFFFFF</color>
+    <color name="nav_bg">#FFFFFFFF</color>
+    <color name="accent">#FF4D6BFE</color>
+    <color name="icon_bg_start">#FF4D6BFE</color>
+    <color name="icon_bg_end">#FF2F49D1</color>
+    <color name="sheet_bg">#FFFFFFFF</color>
+    <color name="tile_bg">#FFF2F3F5</color>
+    <color name="attach_text">#FF1A1A1A</color>
+    <color name="attach_cancel">#FF666666</color>
+    <color name="attach_icon">#FF4D6BFE</color>
+</resources>
