@@ -697,7 +697,12 @@ public class MainActivity extends Activity {
             if (base == null || base.isEmpty()) {
                 return "{\"error\":\"未配置同步地址\"}";
             }
-            String url = base.replaceAll("/+$", "") + "/dsh-sync/" + path;
+            String normalized = base.replaceAll("/+$", "");
+            // 用户可能把完整前缀也粘进来（http://ip:port/dsh-sync），避免拼成两遍
+            if (normalized.endsWith("/dsh-sync")) {
+                normalized = normalized.substring(0, normalized.length() - "/dsh-sync".length());
+            }
+            String url = normalized + "/dsh-sync/" + path;
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(url).openConnection();
