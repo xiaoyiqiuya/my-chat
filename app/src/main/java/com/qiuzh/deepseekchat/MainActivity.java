@@ -740,7 +740,8 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 try {
                     JSONObject out = new JSONObject();
-                    out.put("error", String.valueOf(e.getMessage()));
+                    String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    out.put("error", "无法连接电脑（" + url + "）：" + reason);
                     return out.toString();
                 } catch (Exception ignored) {
                     return "{\"error\":\"网络请求失败\"}";
