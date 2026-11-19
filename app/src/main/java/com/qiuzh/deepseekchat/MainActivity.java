@@ -34,6 +34,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.content.SharedPreferences;
 import android.widget.Toast;
 
 import org.json.JSONArray;
@@ -43,6 +44,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -644,8 +649,104 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 暴露给网页的桥：保存文件、最近照片。 */
+    private static final String SYNC_PREFS = "dsnative-sync";
+
+    private SharedPreferences syncPrefs() {
+        return getSharedPreferences(SYNC_PREFS, MODE_PRIVATE);
+    }
+
+    /** 暴露给网页的桥：保存文件、最近照片、局域网同步。 */
     private class NativeBridge {
+        @android.webkit.JavascriptInterface
+        public String syncConfig() {
+            SharedPreferences prefs = syncPrefs();
+            try {
+                JSONObject out = new JSONObject();
+                out.put("base", prefs.getString("base", ""));
+                out.put("token", prefs.getString("token", ""));
+                out.put("lastSync", prefs.getLong("lastSync", 0L));
+                return out.toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public void setSyncConfig(String base, String token) {
+            syncPrefs().edit()
+                    .putString("base", base == null ? "" : base.trim())
+                    .putString("token", token == null ? "" : token.trim())
+                    .apply();
+        }
+
+        @android.webkit.JavascriptInterface
+        public void setLastSync(long millis) {
+            syncPrefs().edit().putLong("lastSync", millis).apply();
+        }
+
+        /**
+         * 同步请求转发：网页同源请求会被 CORS/混合内容拦住，所以由原生发 HTTP。
+         * path 形如 "index"、"sessions/xxx"、"files/yyy?session=xxx"。
+         * 返回 JSON：{status, body(base64)} 或 {error}。
+         */
+        @android.webkit.JavascriptInterface
+        public String syncRequest(String method, String path, String bodyBase64, String contentType) {
+            SharedPreferences prefs = syncPrefs();
+            String base = prefs.getString("base", "");
+            String token = prefs.getString("token", "");
+            if (base == null || base.isEmpty()) {
+                return "{\"error\":\"未配置同步地址\"}";
+            }
+            String url = base.replaceAll("/+$", "") + "/dsh-sync/" + path;
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setRequestMethod(method);
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(60000);
+                connection.setRequestProperty("X-Pair-Token", token);
+                if (contentType != null && !contentType.isEmpty()) {
+                    connection.setRequestProperty("Content-Type", contentType);
+                }
+                byte[] payload = null;
+                if (bodyBase64 != null && !bodyBase64.isEmpty()) {
+                    payload = Base64.decode(bodyBase64, Base64.DEFAULT);
+                    connection.setDoOutput(true);
+                    connection.setFixedLengthStreamingMode(payload.length);
+                    OutputStream out = connection.getOutputStream();
+                    out.write(payload);
+                    out.close();
+                }
+                int status = connection.getResponseCode();
+                InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                if (input != null) {
+                    byte[] chunk = new byte[8192];
+                    int read;
+                    while ((read = input.read(chunk)) > 0) {
+                        buffer.write(chunk, 0, read);
+                    }
+                    input.close();
+                }
+                JSONObject out = new JSONObject();
+                out.put("status", status);
+                out.put("body", Base64.encodeToString(buffer.toByteArray(), Base64.NO_WRAP));
+                return out.toString();
+            } catch (Exception e) {
+                try {
+                    JSONObject out = new JSONObject();
+                    out.put("error", String.valueOf(e.getMessage()));
+                    return out.toString();
+                } catch (Exception ignored) {
+                    return "{\"error\":\"网络请求失败\"}";
+                }
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        }
+
         @android.webkit.JavascriptInterface
         public String recentPhotos() {
             return recentPhotosJson();

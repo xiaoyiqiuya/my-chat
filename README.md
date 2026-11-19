@@ -20,6 +20,7 @@
   - 跟随系统深色模式的状态栏 / 导航栏配色
   - 调试包支持 chrome://inspect，前端 console 转 logcat（tag `DSWeb`）
 - 设置里提供「API 控制台（去充值）」与「官方网页版」两个外链
+- **局域网同步**：设置 → 数据管理 → 填电脑地址与配对码，手动双向同步会话（配合 DSH 的 `dsh-sync` 插件）
 
 ## 目录
 
@@ -56,6 +57,16 @@ cd frontend
 pnpm install && pnpm build
 cp -r dist/* ../app/src/main/assets/www/
 ```
+
+## 局域网同步（配合 DSH 插件）
+
+手机与电脑在同一 WiFi 时，可以把会话同步到电脑上的 `dsh-sync` 服务：
+
+1. 电脑装 [dsh-sync](plugins/dsh-sync/README.md) 插件，打开 DSH 的「🔄 同步」面板，记下**配对码**和**局域网地址**
+2. 手机 App → 设置 → 数据管理 → 局域网同步：填地址（如 `http://192.168.1.4:62999`）与配对码
+3. 点「立即同步」：本地较新的会话推到电脑，电脑上较新的会话拉回手机
+
+实现要点：WebView 无法直连局域网 HTTP（CORS + 混合内容），所以请求经 `DSNative.syncRequest` 交给原生发；拉取的会话写入 IndexedDB 后直接刷新列表（**不能用 replaceHistory**，它会用空 staging 覆盖整库）。
 
 ## 首次使用
 
