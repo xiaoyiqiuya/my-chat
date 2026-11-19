@@ -36,6 +36,21 @@ frontend/                       # 官方前端源码 + 本项目的改动（见 
 scripts/build.sh                # 一键构建
 ```
 
+## DSH 插件（可选）
+
+仓库里还有两个 DSH 插件，配合使用体验更完整：
+
+| 插件 | 作用 |
+|---|---|
+| `plugins/dsh-chat` | 在 DSH 里加「对话」面板：药丸切换、纯聊天会话（无工具）、复用原生输入框/模型/流式/历史、可配置存放目录 |
+| `plugins/dsh-sync` | 局域网同步服务端：配对码、会话与图片接口、「同步」状态面板 |
+
+```bash
+dsh plugin --profile <profile> add file:D:/path/to/ds-chat-android/plugins/dsh-chat
+dsh plugin --profile <profile> add file:D:/path/to/ds-chat-android/plugins/dsh-sync
+dsh --profile <profile>
+```
+
 ## 构建
 
 需要 JDK 17、Android SDK（platform 34 + build-tools 34.0.0）、Gradle 8.7。
