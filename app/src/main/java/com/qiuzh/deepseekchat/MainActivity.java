@@ -76,6 +76,13 @@ public class MainActivity extends Activity {
     private static final int REQ_MEDIA_PERMISSION = 1005;
 
     private WebView webView;
+    /** 页面是否加载完成；从后台切回时用它判断要不要重载，避免渲染进程被回收后白屏 */
+    private boolean pageReady = false;
+    /** onCreate 后紧接着的第一次 onResume 不算「从后台切回」，避免重复加载 */
+    private boolean firstResume = true;
+    /** 渲染进程被回收后自动重启的次数，60 秒内超过 3 次就停止重启 */
+    private static int rendererRestarts = 0;
+    private static long lastRendererRestart = 0L;
     private ValueCallback<Uri[]> pendingFileCallback;
     private PermissionRequest pendingPermissionRequest;
     private WebChromeClient.FileChooserParams pendingChooserParams;
@@ -139,13 +146,63 @@ public class MainActivity extends Activity {
                 webView.clearCache(true);
                 webView.clearHistory();
             }
-            webView.loadUrl("https://" + ORIGIN_HOST + "/index.html?v=" + appVersionCode());
         }
+        // 无论是冷启动还是被系统回收后重建，都主动加载一次：
+        // 渲染进程被杀后，恢复出来的 WebView 常常是一片空白。
+        loadWebApp();
 
         // 从文件管理「打开方式」或分享面板进来时，直接导入那个 ZIP
         if (savedInstanceState == null) {
             handleIncomingIntent(getIntent());
         }
+    }
+
+    /** 加载离线页面；版本参数用于强制重新解析 index.html。 */
+    private void loadWebApp() {
+        if (webView == null) {
+            return;
+        }
+        pageReady = false;
+        webView.loadUrl("https://" + ORIGIN_HOST + "/index.html?v=" + appVersionCode());
+    }
+
+    /**
+     * 有些 ROM 回收渲染进程时不回调 onRenderProcessGone，切回来只剩白屏。
+     * 这里探一下 #root 是否还有内容，空了就重载。
+     */
+    private void probePageAlive() {
+        if (webView == null) {
+            return;
+        }
+        webView.evaluateJavascript(
+                "(function(){var r=document.getElementById('root');return r?String(r.childElementCount):'null';})()",
+                value -> {
+                    if (value == null || value.equals("null") || value.equals("0") || value.equals("\"0\"")) {
+                        loadWebApp();
+                    }
+                });
+    }
+
+    /** 渲染进程没了：App 还在前台也只剩白屏，直接重启一次界面最省事。 */
+    private void restartFresh() {
+        if (isFinishing()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastRendererRestart > 60_000L) {
+            rendererRestarts = 0;
+        }
+        lastRendererRestart = now;
+        rendererRestarts++;
+        if (rendererRestarts > 3) {
+            // 反复被杀说明内存压力太大，重启也没用，提示用户而不是无限循环
+            toast("页面反复被系统回收，请清理后台后再打开");
+            return;
+        }
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        finish();
+        startActivity(intent);
     }
 
     @Override
@@ -252,6 +309,15 @@ public class MainActivity extends Activity {
     private class ChatWebViewClient extends WebViewClient {
 
         @Override
+        public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+            // 渲染进程被系统回收（内存压力、被清理工具杀）：Activity 还活着但 WebView 已经死了，
+            // 用户从桌面切回来就是一片白。这里直接重建界面。
+            android.util.Log.w("DSWeb", "renderer gone, crashed=" + (detail != null && detail.didCrash()));
+            runOnUiThread(MainActivity.this::restartFresh);
+            return true;
+        }
+
+        @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
             if (uri != null && ORIGIN_HOST.equals(uri.getHost())) {
@@ -286,6 +352,7 @@ public class MainActivity extends Activity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            pageReady = true;
             view.animate().alpha(1f).setDuration(180).start();
         }
     }
@@ -1158,6 +1225,14 @@ public class MainActivity extends Activity {
         super.onResume();
         if (webView != null) {
             webView.onResume();
+            if (firstResume) {
+                firstResume = false;
+            } else if (!pageReady || webView.getUrl() == null) {
+                // 从桌面切回来时页面没加载成功（渲染进程被回收等），主动重载，避免白屏
+                loadWebApp();
+            } else {
+                probePageAlive();
+            }
         }
     }
 
