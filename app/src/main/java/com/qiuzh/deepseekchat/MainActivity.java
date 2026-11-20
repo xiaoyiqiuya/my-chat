@@ -141,6 +141,18 @@ public class MainActivity extends Activity {
             }
             webView.loadUrl("https://" + ORIGIN_HOST + "/index.html?v=" + appVersionCode());
         }
+
+        // 从文件管理「打开方式」或分享面板进来时，直接导入那个 ZIP
+        if (savedInstanceState == null) {
+            handleIncomingIntent(getIntent());
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
     }
 
     /** 低于这个版本的 WebView 会在解析现代 JS 时直接失败，表现为白屏。 */
@@ -249,6 +261,9 @@ public class MainActivity extends Activity {
                 }
                 if (path != null && path.startsWith("/__picked/")) {
                     return servePicked(path.substring("/__picked/".length()));
+                }
+                if (path != null && path.startsWith("/__import/")) {
+                    return serveImport(path.substring("/__import/".length()));
                 }
                 return serveAsset(uri);
             }
@@ -640,6 +655,126 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
             // 取不到就什么也不做
         }
+    }
+
+    private WebResourceResponse serveImport(String encodedName) {
+        try {
+            String name = Uri.decode(encodedName);
+            if (name.contains("..") || name.contains("/")) {
+                return notFound();
+            }
+            File file = new File(new File(getCacheDir(), "import"), name);
+            if (!file.exists()) {
+                return notFound();
+            }
+            return new WebResourceResponse("application/zip", null, new FileInputStream(file));
+        } catch (Exception e) {
+            return notFound();
+        }
+    }
+
+    // ------------------------------------------------------------------ 系统「打开方式」导入
+
+    /** 接收系统通过 VIEW / SEND 交过来的 ZIP，拷到缓存后交给网页导入。 */
+    private void handleIncomingIntent(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        String action = intent.getAction();
+        Uri source = null;
+        if (Intent.ACTION_VIEW.equals(action)) {
+            source = intent.getData();
+        } else if (Intent.ACTION_SEND.equals(action)) {
+            source = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        }
+        if (source == null) {
+            return;
+        }
+        final Uri uri = source;
+        final String name = importFileNameOf(uri);
+        fileCopyExecutor.execute(() -> {
+            File dir = new File(getCacheDir(), "import");
+            if (!dir.exists() && !dir.mkdirs()) {
+                return;
+            }
+            // 只留最新一个待导入文件，避免缓存堆积
+            File[] stale = dir.listFiles();
+            if (stale != null) {
+                for (File old : stale) {
+                    //noinspection ResultOfMethodCallIgnored
+                    old.delete();
+                }
+            }
+            File target = new File(dir, name);
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 OutputStream out = new java.io.FileOutputStream(target)) {
+                if (in == null) {
+                    return;
+                }
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                }
+                out.flush();
+            } catch (IOException | SecurityException e) {
+                runOnUiThread(() -> toast("无法读取该文件"));
+                return;
+            }
+            runOnUiThread(() -> deliverImport(target));
+        });
+    }
+
+    /** 取一个安全的文件名（只保留 basename，并去掉危险字符）。 */
+    private String importFileNameOf(Uri uri) {
+        String name = displayNameOf(uri);
+        if (name == null || name.isEmpty()) {
+            name = "history-" + System.currentTimeMillis() + ".zip";
+        }
+        name = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+            name = name + ".zip";
+        }
+        return name;
+    }
+
+    /** 导入会覆盖本机记录，先确认一次。 */
+    private void deliverImport(File file) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("导入聊天记录")
+                .setMessage("将用「" + file.getName() + "」覆盖本机现有的聊天记录与附件，是否继续？")
+                .setPositiveButton("导入", (dialog, which) -> deliverImportWhenReady(file, 0))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 页面可能还没挂载好，轮询直到 __dsImportArchive 可用（最多 30 秒）。 */
+    private void deliverImportWhenReady(File file, int attempt) {
+        if (webView == null) {
+            return;
+        }
+        if (attempt > 60) {
+            toast("页面没有准备好，导入已取消");
+            return;
+        }
+        String url = "https://" + ORIGIN_HOST + "/__import/" + Uri.encode(file.getName());
+        String script = "(function(){if(typeof window.__dsImportArchive!=='function')return false;"
+                + "window.__dsImportArchive(" + jsString(url) + "," + jsString(file.getName()) + ");"
+                + "return true;})()";
+        webView.evaluateJavascript(script, value -> {
+            if (!"true".equals(value)) {
+                new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> deliverImportWhenReady(file, attempt + 1), 500);
+            }
+        });
+    }
+
+    private static String jsString(String value) {
+        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'";
+    }
+
+    private void toast(String message) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private WebResourceResponse servePicked(String encodedName) {
