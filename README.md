@@ -91,19 +91,34 @@ cp -r dist/* ../app/src/main/assets/www/
 
 ## 白屏排查
 
-安装后白屏（重开、清后台都没用）通常是这两类原因，0.1.4 起已做处理：
+安装后白屏（重开、清后台都没用）基本是「系统 WebView 太旧」。0.1.7 起用**双构建**解决：
 
-1. **WebView 版本过旧**：前端构建目标从 `chrome >= 105` 降到 **`chrome >= 66`**（国内华为等机型的系统 WebView 不能随 Play Store 更新，常停在 66~74，`?.` / `??` 会直接解析失败），并在 `src/app/polyfills.ts` 里补了 `Object.hasOwn`、`structuredClone`、`Object.fromEntries`、`Array.prototype.at/flat/flatMap/findLast`、`String.prototype.replaceAll/matchAll`、`Promise.any/allSettled`、`globalThis`、`queueMicrotask`、`AbortController`、`crypto.randomUUID`。
-2. **升级后用了缓存里的旧页面**：`index.html` 以 `no-store` 返回，页面 URL 带 `?v=<versionCode>`，版本号变化时清一次 WebView 缓存。
+| WebView 版本 | 使用哪个包 | 说明 |
+|---|---|---|
+| Chrome ≥ 105 | `www/modern/` | 新语法，体积最小、启动最快 |
+| Chrome 60 ~ 104 | `www/legacy/` | 重新转译（含 node_modules），语法降到 ES2018 |
+| Chrome < 60 | 原生提示页 | 不发页面，直接告诉用户更新 WebView / 系统 |
 
-如果仍然白屏，页面会显示一个**错误面板**（错误信息、UA、缺失特性、复制按钮），把它复制给开发者即可定位。相关命令：
+选择发生在 `www/index.html` 里一段 **ES5 loader**：解析 UA 的 `Chrome/xx`，动态插入对应的 css/js。这段 loader 不依赖任何构建产物，所以老内核也能跑；页面起不来时它会显示错误面板（错误信息、UA、缺失特性、复制按钮）。
+
+另外：
+- `index.html` 以 `no-store` 返回，URL 带 `?v=<versionCode>`，版本号变化时清一次 WebView 缓存；
+- `src/app/polyfills.ts` 补了 `Object.hasOwn`、`structuredClone`、`Object.fromEntries`、`Array.prototype.at/flat/flatMap/findLast`、`String.prototype.replaceAll/matchAll`、`Promise.any/allSettled`、`globalThis`、`queueMicrotask`、`AbortController`、`crypto.randomUUID`。
+
+## 双构建与校验
 
 ```bash
-python scripts/patch-dist.py dist      # 改标题并校验资源非空
-python scripts/verify-apk.py <apk>     # 校验 APK 里的 index.html 引用都存在且非空
+cd frontend
+pnpm build                       # modern -> dist
+LEGACY=1 pnpm build              # legacy -> dist-legacy
+python ../scripts/assemble-www.py dist dist-legacy ../app/src/main/assets/www
+
+# 校验
+node ../scripts/syntax-check.js dist-legacy 2018   # legacy 必须是 ES2018 可解析
+python ../scripts/verify-apk.py                    # APK 里两份包都存在且非空
 ```
 
-构建侧也加了保护：`app/build.gradle.kts` 里的 `verifyWebAssets` 会在打包前检查 `assets/www`，`main.*.js` 为空会直接构建失败（之前出现一次 0 字节脚本，装出来正好是白屏）。
+`app/build.gradle.kts` 的 `verifyWebAssets` 会在打包前检查 `modern/` 与 `legacy/` 的 `main.*.js` 是否为空、以及 `index.html` 是否引用了它们——之前出现过一次 0 字节脚本，装出来正好是白屏。
 
 ## 已知限制
 

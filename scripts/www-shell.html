@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>My Chat</title>
+    <script>
+      // 这一段必须是 ES5：它要比任何构建产物先运行，负责选包和兜底报错。
+      (function () {
+        var MODERN = { js: '__MODERN_JS__', css: '__MODERN_CSS__' }
+        var LEGACY = { js: '__LEGACY_JS__', css: '__LEGACY_CSS__' }
+        var reported = false
+
+        function chromeMajor() {
+          var match = /Chrome\/(\d+)/.exec(navigator.userAgent)
+          return match ? parseInt(match[1], 10) : 0
+        }
+
+        function capabilityReport() {
+          var checks = [
+            ['Object.hasOwn', typeof Object.hasOwn === 'function'],
+            ['structuredClone', typeof structuredClone === 'function'],
+            ['Array.prototype.at', typeof [].at === 'function'],
+            ['Array.prototype.findLast', typeof [].findLast === 'function'],
+            ['String.prototype.replaceAll', typeof ''.replaceAll === 'function'],
+            ['Promise.any', typeof Promise.any === 'function']
+          ]
+          var missing = []
+          for (var i = 0; i < checks.length; i += 1) {
+            if (!checks[i][1]) missing.push(checks[i][0])
+          }
+          return { ua: navigator.userAgent, missing: missing }
+        }
+
+        function show(message, detail) {
+          if (reported) return
+          reported = true
+          var host = document.getElementById('root')
+          if (!host) {
+            document.addEventListener('DOMContentLoaded', function () {
+              reported = false
+              show(message, detail)
+            })
+            return
+          }
+          var info = capabilityReport()
+          var box = document.createElement('div')
+          box.setAttribute(
+            'style',
+            'position:fixed;inset:0;z-index:2147483647;background:#fff;color:#111;overflow:auto;' +
+              'font:13px/1.6 system-ui,sans-serif;padding:24px 20px;box-sizing:border-box'
+          )
+          var title = document.createElement('div')
+          title.setAttribute('style', 'font-size:16px;font-weight:600;margin-bottom:10px')
+          title.textContent = message
+          var body = document.createElement('pre')
+          body.setAttribute(
+            'style',
+            'white-space:pre-wrap;word-break:break-all;background:#f5f5f5;border-radius:8px;padding:12px;margin:0 0 12px'
+          )
+          body.textContent = detail || ''
+          var hint = document.createElement('div')
+          hint.setAttribute('style', 'color:#666;margin-bottom:12px')
+          hint.textContent =
+            '可以尝试：在应用市场更新「Android System WebView」，或升级系统。' +
+            (info.missing.length ? ' 缺少特性：' + info.missing.join('、') : '')
+          var copy = document.createElement('button')
+          copy.textContent = '复制错误信息'
+          copy.setAttribute(
+            'style',
+            'padding:8px 14px;border:1px solid #ccc;border-radius:8px;background:#fff;font:inherit'
+          )
+          copy.onclick = function () {
+            var text =
+              message + '\n' + (detail || '') + '\n' + info.ua + '\nmissing: ' + info.missing.join(',')
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text)
+              copy.textContent = '已复制'
+            } else {
+              var area = document.createElement('textarea')
+              area.value = text
+              document.body.appendChild(area)
+              area.select()
+              try {
+                document.execCommand('copy')
+                copy.textContent = '已复制'
+              } catch (e) {
+                copy.textContent = '复制失败'
+              }
+              document.body.removeChild(area)
+            }
+          }
+          box.appendChild(title)
+          box.appendChild(body)
+          box.appendChild(hint)
+          box.appendChild(copy)
+          host.innerHTML = ''
+          host.appendChild(box)
+        }
+
+        window.onerror = function (message, source, line) {
+          show('页面启动失败', String(message) + '\n' + String(source || '') + ':' + String(line || ''))
+        }
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event.reason
+          show('页面启动失败', (reason && (reason.stack || reason.message)) || String(reason))
+        })
+
+        var major = chromeMajor()
+        // 低于 105 用转译版；识别不到版本（极旧内核）也走转译版
+        var useLegacy = major === 0 || major < 105
+        var bundle = useLegacy ? LEGACY : MODERN
+        document.documentElement.setAttribute('data-bundle', useLegacy ? 'legacy' : 'modern')
+
+        var css = document.createElement('link')
+        css.rel = 'stylesheet'
+        css.href = bundle.css
+        document.head.appendChild(css)
+
+        var script = document.createElement('script')
+        script.src = bundle.js
+        script.defer = true
+        script.onerror = function () {
+          show('脚本加载失败', bundle.js)
+        }
+        document.head.appendChild(script)
+
+        setTimeout(function () {
+          var root = document.getElementById('root')
+          if (root && root.childElementCount === 0) {
+            show('页面没有渲染出来', '当前 WebView 版本：Chrome/' + (major || '未知'))
+          }
+        }, 8000)
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

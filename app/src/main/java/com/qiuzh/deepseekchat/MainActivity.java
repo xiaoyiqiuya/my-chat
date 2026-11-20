@@ -122,6 +122,15 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        // 系统 WebView 太旧时页面会白屏：先提示，用户仍可选择继续
+        int webViewMajor = webViewMajorVersion();
+        boolean allowOld = getSharedPreferences("dsnative-app", MODE_PRIVATE)
+                .getBoolean("allowOldWebView", false);
+        if (webViewMajor > 0 && webViewMajor < MIN_WEBVIEW_MAJOR && !allowOld) {
+            showWebViewOutdated(webViewMajor);
+            return;
+        }
+
         if (savedInstanceState == null) {
             clearPickedFiles();
             // 升级后旧页面/旧脚本可能还在 WebView 缓存里，表现为白屏且重启无效：
@@ -132,6 +141,76 @@ public class MainActivity extends Activity {
             }
             webView.loadUrl("https://" + ORIGIN_HOST + "/index.html?v=" + appVersionCode());
         }
+    }
+
+    /** 低于这个版本的 WebView 会在解析现代 JS 时直接失败，表现为白屏。 */
+    private static final int MIN_WEBVIEW_MAJOR = 60;
+
+    /** 从默认 UA 里取 Chrome 主版本；取不到返回 -1。 */
+    private int webViewMajorVersion() {
+        String[] candidates = new String[2];
+        try {
+            candidates[0] = WebSettings.getDefaultUserAgent(this);
+        } catch (Throwable ignored) {
+            // 个别 ROM 会抛错，继续用 WebView 自己的 UA
+        }
+        try {
+            candidates[1] = webView.getSettings().getUserAgentString();
+        } catch (Throwable ignored) {
+            // 忽略
+        }
+        for (String ua : candidates) {
+            if (ua == null) {
+                continue;
+            }
+            java.util.regex.Matcher matcher =
+                    java.util.regex.Pattern.compile("Chrome/(\\d+)").matcher(ua);
+            if (matcher.find()) {
+                try {
+                    return Integer.parseInt(matcher.group(1));
+                } catch (NumberFormatException ignored) {
+                    // 继续下一个
+                }
+            }
+        }
+        return -1;
+    }
+
+    /** 原生提示页：比白屏友好，也告诉用户怎么更新。 */
+    private void showWebViewOutdated(int major) {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        layout.setPadding(pad, pad, pad, pad);
+
+        android.widget.TextView title = new android.widget.TextView(this);
+        title.setText("系统 WebView 版本过低");
+        title.setTextSize(20);
+        title.setPadding(0, pad, 0, pad / 2);
+
+        android.widget.TextView body = new android.widget.TextView(this);
+        body.setText("当前 Chrome/" + major + "，需要 " + MIN_WEBVIEW_MAJOR + " 或更高。\n\n"
+                + "页面由系统 WebView 渲染，版本太旧会导致白屏。可以：\n"
+                + "1. 在应用市场搜索「Android System WebView」或「WebView」并更新；\n"
+                + "2. 升级系统（EMUI / HarmonyOS 更新会带上新的 WebView）；\n"
+                + "3. 如果都不行，点下面的按钮仍然尝试打开。");
+        body.setTextSize(14);
+        body.setPadding(0, pad / 2, 0, pad);
+
+        android.widget.Button proceed = new android.widget.Button(this);
+        proceed.setText("仍然尝试打开");
+        proceed.setOnClickListener(v -> {
+            getSharedPreferences("dsnative-app", MODE_PRIVATE)
+                    .edit().putBoolean("allowOldWebView", true).apply();
+            recreate();
+        });
+
+        layout.addView(title);
+        layout.addView(body);
+        layout.addView(proceed);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.addView(layout);
+        setContentView(scroll);
     }
 
     private int appVersionCode() {

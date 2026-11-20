@@ -10,8 +10,8 @@ android {
         applicationId = "com.qiuzh.deepseekchat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.1.5"
+        versionCode = 8
+        versionName = "0.1.7"
     }
 
     buildTypes {
@@ -45,17 +45,20 @@ val verifyWebAssets by tasks.registering {
         val index = www.resolve("index.html")
         check(index.isFile) { "assets/www/index.html 缺失，无法打包离线页面" }
         val html = index.readText()
-        val refs = Regex("(?:src|href)=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }
-        for (ref in refs) {
-            if (ref.startsWith("http://") || ref.startsWith("https://") || ref.startsWith("//")) continue
-            val target = www.resolve(ref)
-            check(target.isFile) { "index.html 引用的资源不存在：$ref" }
-            check(target.length() > 0L) { "index.html 引用的资源是空文件：$ref（会导致白屏）" }
+        // 双构建：modern/ 与 legacy/ 各有一份 main.*.js
+        for (bundle in listOf("modern", "legacy")) {
+            val jsDir = www.resolve(bundle).resolve("static/js")
+            val main = jsDir.listFiles()?.firstOrNull { it.name.startsWith("main.") && it.name.endsWith(".js") }
+            check(main != null && main.length() > 0L) {
+                "assets/www/$bundle 缺少有效的 main.*.js，装出来会白屏"
+            }
+            check(html.contains("$bundle/static/js/${main.name}")) {
+                "index.html 没有引用 $bundle/static/js/${main.name}，双构建选择器与产物不一致"
+            }
         }
-        val main = www.resolve("static/js").listFiles()?.firstOrNull {
-            it.name.startsWith("main.") && it.name.endsWith(".js")
+        check(html.contains("modern/static/css/main.") && html.contains("legacy/static/css/main.")) {
+            "index.html 里缺少 modern/legacy 的样式引用"
         }
-        check(main != null && main.length() > 0L) { "assets/www 里没有有效的 main.*.js，装出来会白屏" }
     }
 }
 
