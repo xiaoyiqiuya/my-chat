@@ -93,7 +93,7 @@ cp -r dist/* ../app/src/main/assets/www/
 
 安装后白屏（重开、清后台都没用）通常是这两类原因，0.1.4 起已做处理：
 
-1. **WebView 版本过旧**：前端构建目标从 `chrome >= 105` 降到 `chrome >= 87`，并在 `src/app/polyfills.ts` 里补了 `Object.hasOwn`、`structuredClone`、`Array.prototype.at/findLast`、`String.prototype.replaceAll`、`Promise.any`、`crypto.randomUUID`。
+1. **WebView 版本过旧**：前端构建目标从 `chrome >= 105` 降到 **`chrome >= 66`**（国内华为等机型的系统 WebView 不能随 Play Store 更新，常停在 66~74，`?.` / `??` 会直接解析失败），并在 `src/app/polyfills.ts` 里补了 `Object.hasOwn`、`structuredClone`、`Object.fromEntries`、`Array.prototype.at/flat/flatMap/findLast`、`String.prototype.replaceAll/matchAll`、`Promise.any/allSettled`、`globalThis`、`queueMicrotask`、`AbortController`、`crypto.randomUUID`。
 2. **升级后用了缓存里的旧页面**：`index.html` 以 `no-store` 返回，页面 URL 带 `?v=<versionCode>`，版本号变化时清一次 WebView 缓存。
 
 如果仍然白屏，页面会显示一个**错误面板**（错误信息、UA、缺失特性、复制按钮），把它复制给开发者即可定位。相关命令：
