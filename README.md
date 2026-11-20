@@ -89,6 +89,22 @@ cp -r dist/* ../app/src/main/assets/www/
 2. 可选：设置语言、位置；「数据管理」里导入从 DeepSeek App 导出的 ZIP（会覆盖本地记录）
 3. API Key 与聊天记录只在本机
 
+## 白屏排查
+
+安装后白屏（重开、清后台都没用）通常是这两类原因，0.1.4 起已做处理：
+
+1. **WebView 版本过旧**：前端构建目标从 `chrome >= 105` 降到 `chrome >= 87`，并在 `src/app/polyfills.ts` 里补了 `Object.hasOwn`、`structuredClone`、`Array.prototype.at/findLast`、`String.prototype.replaceAll`、`Promise.any`、`crypto.randomUUID`。
+2. **升级后用了缓存里的旧页面**：`index.html` 以 `no-store` 返回，页面 URL 带 `?v=<versionCode>`，版本号变化时清一次 WebView 缓存。
+
+如果仍然白屏，页面会显示一个**错误面板**（错误信息、UA、缺失特性、复制按钮），把它复制给开发者即可定位。相关命令：
+
+```bash
+python scripts/patch-dist.py dist      # 改标题并校验资源非空
+python scripts/verify-apk.py <apk>     # 校验 APK 里的 index.html 引用都存在且非空
+```
+
+构建侧也加了保护：`app/build.gradle.kts` 里的 `verifyWebAssets` 会在打包前检查 `assets/www`，`main.*.js` 为空会直接构建失败（之前出现一次 0 字节脚本，装出来正好是白屏）。
+
 ## 已知限制
 
 - 导出超大历史（100MB+）时 ZIP 在 WebView 里整块生成再 base64 过桥，内存压力大，可能失败；导入侧已优化。

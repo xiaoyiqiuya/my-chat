@@ -124,8 +124,31 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState == null) {
             clearPickedFiles();
-            webView.loadUrl("https://" + ORIGIN_HOST + "/index.html");
+            // 升级后旧页面/旧脚本可能还在 WebView 缓存里，表现为白屏且重启无效：
+            // 版本号变了就清一次缓存，并用版本参数强制重新解析 index.html。
+            if (appVersionChanged()) {
+                webView.clearCache(true);
+                webView.clearHistory();
+            }
+            webView.loadUrl("https://" + ORIGIN_HOST + "/index.html?v=" + appVersionCode());
         }
+    }
+
+    private int appVersionCode() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** 上次启动时的版本号；首次安装或升级后返回 true。 */
+    private boolean appVersionChanged() {
+        android.content.SharedPreferences prefs = getSharedPreferences("dsnative-app", MODE_PRIVATE);
+        int current = appVersionCode();
+        boolean changed = prefs.getInt("versionCode", -1) != current;
+        prefs.edit().putInt("versionCode", current).apply();
+        return changed;
     }
 
     private boolean isNightMode() {
@@ -197,8 +220,9 @@ public class MainActivity extends Activity {
         try {
             InputStream in = getAssets().open(assetPath);
             Map<String, String> headers = new HashMap<>();
-            headers.put("Cache-Control", path.equals("/index.html")
-                    ? "no-cache"
+            // index.html 绝不缓存：旧 HTML 会引用已被替换掉的脚本文件名，页面因此白屏。
+            headers.put("Cache-Control", path.equals("/index.html") || !path.contains(".")
+                    ? "no-store, no-cache, must-revalidate"
                     : "public, max-age=31536000, immutable");
             WebResourceResponse response = new WebResourceResponse(
                     mimeTypeOf(path), encodingOf(path), 200, "OK", headers, in);
