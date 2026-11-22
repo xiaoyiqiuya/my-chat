@@ -10,8 +10,8 @@ android {
         applicationId = "com.qiuzh.deepseekchat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.2.2"
+        versionCode = 14
+        versionName = "0.2.3"
     }
 
     buildTypes {
@@ -65,3 +65,4 @@ val verifyWebAssets by tasks.registering {
 tasks.named("preBuild") {
     dependsOn(verifyWebAssets)
 }
+
