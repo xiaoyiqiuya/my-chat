@@ -18,3 +18,8 @@ frontend/dist/
 
 .DS_Store
 Thumbs.db
+
+desktop/.cache/
+desktop/dist/
+*.apk
+!dist/*.apk
