@@ -26,7 +26,8 @@
 
 | 版本 | 定位 | 关键变化 |
 |---|---|---|
-| 0.2.0 | **兼容版（当前发布）** | 双构建（modern chrome105 / legacy chrome60）、原生 WebView 版本提示、文件管理「打开方式」导入、导入进度百分比；**不含云同步** |
+| 0.2.4 | **当前发布（首个 GitHub Release）** | 会话分组、导入合并去重、设置页显示版本号 |
+| 0.2.0 | 兼容版 | 双构建（modern chrome105 / legacy chrome60）、原生 WebView 版本提示、文件管理「打开方式」导入、导入进度百分比；**不含云同步** |
 | 0.1.9 及更早 | 内测 | 单构建、含局域网同步 |
 
 云同步开关是编译期常量 `__ENABLE_SYNC__`（`rspack.config.ts` 里由 `SYNC=1` 注入）。默认关闭时，同步设置区块与启动自动同步都会被 DCE 移除，包内不含「局域网同步 / 立即同步 / 配对码」等字符串。要重新开启：
@@ -143,3 +144,25 @@ python ../scripts/verify-apk.py                    # APK 里两份包都存在�
 
 - `frontend/` 与 `app/src/main/assets/www/` 来自 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo)，MIT，许可证见 `app/src/main/assets/www/LICENSE`。
 - 本项目是个人封装的非官方客户端，与 DeepSeek 无隶属关系；请求直接调用官方 API，按 token 计费。
+
+## 下载安装
+
+**最新安卓版：[android-v0.2.4](https://github.com/xiaoyiqiuya/my-chat/releases/tag/android-v0.2.4)**
+
+- 安装包：`my-chat-0.2.4.apk`（3.7 MB，versionCode 15）
+- 要求：Android 8.0（API 26）及以上
+- 首次启动需在设置里填入自己的 DeepSeek API Key（[获取](https://platform.deepseek.com)）
+
+## 多端形态
+
+| 端 | 说明 |
+|---|---|
+| **Android App** | 本仓库主体，官方 chat-demo 前端 + 原生 WebView 壳 |
+| **DSH 插件** | `plugins/dsh-chat`，在 DeepSeek Harness 里以「HARNESS ｜ Chat」双模式使用，Chat 走 DSH 已配置的模型、无需 API Key |
+| **Obsidian 插件** | `obsidian-plugin/`，在 Obsidian 内嵌同一份前端 |
+| **桌面应用** | `desktop/`，Electron 封装 |
+
+## 许可
+
+[MIT](LICENSE)
+
